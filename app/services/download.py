@@ -22,7 +22,7 @@ L = instaloader.Instaloader(
 )
 
 
-@broker.task(labels={"step": "download"})
+@broker.task(step="download")
 async def download_reel(
     short_code: str,
     task_id: str,

@@ -32,7 +32,7 @@ class AudioTrack(sqlmodel.SQLModel, table=True):
 class Transcript(sqlmodel.SQLModel, table=True):
     id:             uuid.UUID = sqlmodel.Field(default_factory=uuid.uuid4, primary_key=True)
     audio_track_id: uuid.UUID = sqlmodel.Field(foreign_key="audiotrack.id", unique=True)
-    text:           str
+    file_path:      str
     language:       str | None = None
     topics:         str | None = None
     created_at:     datetime   = sqlmodel.Field(default_factory=datetime.now)
@@ -54,3 +54,4 @@ class TaskError(sqlmodel.SQLModel, table=True):
     message:   str
     detail:    str | None = None
     created_at: datetime = sqlmodel.Field(default_factory=datetime.now)
+

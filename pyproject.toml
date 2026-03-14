@@ -13,6 +13,9 @@ dependencies = [
     "taskiq-fastapi>=0.4.0",
     "taskiq-redis>=1.2.2",
     "pydub>=0.25.1",
+    "python-dotenv>=1.0.0",
+    "openai[aiohttp]>=2.28.0",
+    "aiohttp>=3.13.3",
 ]
 
 [dependency-groups]
@@ -26,4 +29,5 @@ dev = [
 env = [
     "ENVIRONMENT=pytest",
     "DATABASE_URL=sqlite://",
+    "OPENAI_API_KEY=test-key",
 ]

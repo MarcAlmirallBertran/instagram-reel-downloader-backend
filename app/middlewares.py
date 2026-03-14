@@ -16,7 +16,7 @@ class ErrorHandlerMiddleware(TaskiqMiddleware):
         exception: BaseException,
     ) -> None:
         task_id = message.args[1] if len(message.args) > 1 else None
-        step = message.labels.get("step")
+        step: str | None = message.labels.get("step")
 
         if not task_id or not step:
             return

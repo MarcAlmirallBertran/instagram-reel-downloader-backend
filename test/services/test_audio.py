@@ -46,8 +46,16 @@ def audio_segment_mock(mocker, video_file):
     return mock_segment
 
 
+@pytest.fixture()
+def transcribe_audio_kiq_mock(mocker):
+    return mocker.patch(
+        "app.services.audio.transcribe_audio.kiq",
+        new_callable=mocker.AsyncMock,
+    )
+
+
 @pytest.mark.anyio
-async def test_extract_audio_ok(audio_segment_mock, download_in_db, task_in_db, db_session):
+async def test_extract_audio_ok(audio_segment_mock, transcribe_audio_kiq_mock, download_in_db, task_in_db, db_session):
     result = await audio.extract_audio(str(download_in_db.id), str(task_in_db.id), session=db_session)
     assert result == "Audio extracted successfully."
 
@@ -57,6 +65,8 @@ async def test_extract_audio_ok(audio_segment_mock, download_in_db, task_in_db, 
     assert db_audio is not None
     assert db_audio.duration == 42.0
     assert db_audio.file_path.endswith(".mp3")
+
+    transcribe_audio_kiq_mock.assert_called_once_with(str(db_audio.id), str(task_in_db.id))
 
 
 @pytest.mark.anyio

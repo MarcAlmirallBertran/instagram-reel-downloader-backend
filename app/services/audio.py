@@ -9,11 +9,12 @@ from taskiq import TaskiqDepends
 from app.broker import broker
 from app.api.deps import get_db
 from app.models import AudioTrack, Download, Task, TaskStatus
+from app.services.transcript import transcribe_audio
 
 logger = logging.getLogger(__name__)
 
 
-@broker.task(labels={"step": "audio"})
+@broker.task(step="audio")
 async def extract_audio(
     download_id: str,
     task_id: str,
@@ -52,5 +53,7 @@ async def extract_audio(
     )
     session.add(db_audio_track)
     session.commit()
+
+    await transcribe_audio.kiq(str(db_audio_track.id), task_id)
 
     return "Audio extracted successfully."
