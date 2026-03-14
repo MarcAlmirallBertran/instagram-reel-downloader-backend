@@ -1,20 +1,15 @@
+import uuid
+
 from fastapi.testclient import TestClient
 from fastapi import status
 import pytest
 
 
 @pytest.fixture()
-def task_mock(mocker):
-    mock_task = mocker.MagicMock()
-    mock_task.task_id = "test1234"
-    return mock_task
-
-
-@pytest.fixture()
-def get_task_mock(mocker, task_mock):
+def get_task_mock(mocker):
     mocker.patch(
         "app.api.routes.tasks.download.download_reel.kiq",
-        return_value=task_mock,
+        return_value=mocker.AsyncMock(),
     )
 
 
@@ -22,7 +17,8 @@ def test_tasks_ok(get_task_mock, client: TestClient):
     data = {"uri": "https://www.instagram.com/reel/shortcode/"}
     response = client.post("/tasks", json=data)
     assert response.status_code == status.HTTP_201_CREATED
-    assert response.json() == {"task_id": "test1234"}
+    task_id = response.json()["task_id"]
+    uuid.UUID(task_id)
 
 
 def test_tasks_bad_url(client: TestClient):

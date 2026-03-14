@@ -1,21 +1,23 @@
-from typing import Generator
+from collections.abc import Generator
 
 import pytest
+import sqlmodel
 import taskiq_fastapi
 from fastapi.testclient import TestClient
 
 from app.main import app
 from app.broker import broker
+from app.core.db import engine
 
 
 @pytest.fixture(scope="session")
 def anyio_backend() -> str:
     return "asyncio"
-    
-    
+
+
 @pytest.fixture(autouse=True)
 def init_taskiq_deps():
-    
+
     taskiq_fastapi.populate_dependency_context(broker, app)
 
     yield
@@ -27,3 +29,9 @@ def init_taskiq_deps():
 def client() -> Generator[TestClient, None, None]:
     with TestClient(app) as c:
         yield c
+
+
+@pytest.fixture()
+def db_session() -> Generator[sqlmodel.Session, None, None]:
+    with sqlmodel.Session(engine) as session:
+        yield session

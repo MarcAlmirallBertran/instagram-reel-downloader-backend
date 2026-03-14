@@ -1,17 +1,20 @@
 import taskiq_fastapi
 import os
-from taskiq_redis import RedisStreamBroker
-from taskiq import InMemoryBroker
+import taskiq_redis
+import taskiq
 
+from app.middlewares import ErrorHandlerMiddleware
 
-broker = RedisStreamBroker(
+broker = taskiq_redis.RedisStreamBroker(
     url="redis://localhost:6379",
 )
 
 
 env = os.environ.get("ENVIRONMENT")
 if env and env == "pytest":
-    broker = InMemoryBroker(await_inplace=True)
+    broker = taskiq.InMemoryBroker(await_inplace=True)
 
+
+broker.add_middlewares(ErrorHandlerMiddleware())
 
 taskiq_fastapi.init(broker, "app.main:app")
