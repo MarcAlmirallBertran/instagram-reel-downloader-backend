@@ -66,8 +66,16 @@ def download_post_mock_failed(mocker):
     )
 
 
+@pytest.fixture()
+def extract_audio_kiq_mock(mocker):
+    return mocker.patch(
+        "app.services.download.extract_audio.kiq",
+        new_callable=mocker.AsyncMock,
+    )
+
+
 @pytest.mark.anyio
-async def test_download_reel_ok(get_post_mock_ok, download_post_mock_ok, task_in_db, db_session):
+async def test_download_reel_ok(get_post_mock_ok, download_post_mock_ok, extract_audio_kiq_mock, task_in_db, db_session):
     result = await download.download_reel("shortcode", str(task_in_db.id), session=db_session)
     assert result == "Instagram reel downloaded successfully."
 
@@ -77,6 +85,8 @@ async def test_download_reel_ok(get_post_mock_ok, download_post_mock_ok, task_in
 
     db_session.refresh(task_in_db)
     assert task_in_db.download_id == db_download.id
+
+    extract_audio_kiq_mock.assert_called_once_with(str(db_download.id), str(task_in_db.id))
 
 
 @pytest.mark.anyio

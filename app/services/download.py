@@ -10,6 +10,7 @@ from taskiq import TaskiqDepends
 from app.broker import broker
 from app.api.deps import get_db
 from app.models import Download, Task, TaskStatus
+from app.services.audio import extract_audio
 
 media_dir = pathlib.Path(tempfile.gettempdir()) / "reels"
 media_dir.mkdir(exist_ok=True)
@@ -52,5 +53,7 @@ async def download_reel(
         task.download_id = db_download.id
 
     session.commit()
+
+    await extract_audio.kiq(str(db_download.id), task_id)
 
     return "Instagram reel downloaded successfully."

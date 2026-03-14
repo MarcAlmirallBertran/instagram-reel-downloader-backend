@@ -12,6 +12,7 @@ dependencies = [
     "taskiq>=0.12.1",
     "taskiq-fastapi>=0.4.0",
     "taskiq-redis>=1.2.2",
+    "pydub>=0.25.1",
 ]
 
 [dependency-groups]
