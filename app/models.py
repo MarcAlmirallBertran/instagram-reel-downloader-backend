@@ -43,6 +43,7 @@ class Task(sqlmodel.SQLModel, table=True):
     url:         str
     status_code: uuid.UUID        = sqlmodel.Field(foreign_key="taskstatus.id")
     download_id: uuid.UUID | None = sqlmodel.Field(default=None, foreign_key="download.id")
+    cancelled:   bool             = sqlmodel.Field(default=False)
     created_at:  datetime         = sqlmodel.Field(default_factory=datetime.now)
     updated_at:  datetime         = sqlmodel.Field(default_factory=datetime.now)
 

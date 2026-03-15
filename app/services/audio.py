@@ -11,6 +11,7 @@ from app.api.deps import get_db
 from app.models import AudioTrack, Download, Task, TaskStatus
 from app.services.transcript import transcribe_audio
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -20,11 +21,14 @@ async def extract_audio(
     task_id: str,
     session: sqlmodel.Session = TaskiqDepends(get_db),
 ):
+    logger.info(f"Starting audio extraction for task {task_id} with download ID {download_id}")
     processing_status = session.exec(
         sqlmodel.select(TaskStatus).where(TaskStatus.code == "processing")
     ).one()
 
     task = session.get(Task, uuid.UUID(task_id))
+    if task and task.cancelled:
+        return "Task was cancelled."
     if task:
         task.status_code = processing_status.id
         session.commit()
@@ -54,6 +58,6 @@ async def extract_audio(
     session.add(db_audio_track)
     session.commit()
 
-    await transcribe_audio.kiq(str(db_audio_track.id), task_id)
+    await transcribe_audio.kiq(audio_track_id=str(db_audio_track.id), task_id=task_id)
 
     return "Audio extracted successfully."

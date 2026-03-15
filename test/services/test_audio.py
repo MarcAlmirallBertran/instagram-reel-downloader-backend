@@ -66,7 +66,7 @@ async def test_extract_audio_ok(audio_segment_mock, transcribe_audio_kiq_mock, d
     assert db_audio.duration == 42.0
     assert db_audio.file_path.endswith(".mp3")
 
-    transcribe_audio_kiq_mock.assert_called_once_with(str(db_audio.id), str(task_in_db.id))
+    transcribe_audio_kiq_mock.assert_called_once_with(audio_track_id=str(db_audio.id), task_id=str(task_in_db.id))
 
 
 @pytest.mark.anyio
@@ -97,8 +97,8 @@ async def test_error_middleware_audio_step(task_in_db, db_session):
         task_id="test-task-id",
         task_name="app.services.audio:extract_audio",
         labels={"step": "audio"},
-        args=[str(uuid.uuid4()), str(task_in_db.id)],
-        kwargs={},
+        args=[],
+        kwargs={"download_id": str(uuid.uuid4()), "task_id": str(task_in_db.id)},
     )
     result = TaskiqResult(is_err=True, return_value=None, execution_time=0.1, labels={})
     exception = RuntimeError("Audio conversion failed")

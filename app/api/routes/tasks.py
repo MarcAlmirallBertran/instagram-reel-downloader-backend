@@ -1,4 +1,5 @@
 import logging
+import uuid
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, status
@@ -69,6 +70,42 @@ async def create_tasks(
     session.commit()
     session.refresh(db_task)
 
-    await download.download_reel.kiq(short_code, str(db_task.id))
+    await download.download_reel.kiq(short_code=short_code, task_id=str(db_task.id))
 
     return TaskResponse(task_id=str(db_task.id))
+
+
+TERMINAL_STATUSES = ("completed", "failed", "cancelled")
+
+
+@router.post(
+    "/{task_id}/cancel",
+    status_code=status.HTTP_200_OK,
+    response_model=Message,
+    responses={
+        404: {"model": Message, "description": "Task not found."},
+        409: {"model": Message, "description": "Task is in a terminal state and cannot be cancelled."},
+    },
+)
+async def cancel_task(
+    task_id: uuid.UUID,
+    session: SessionDep,
+):
+    task = session.get(Task, task_id)
+    if not task:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content={"message": "Task not found."},
+        )
+
+    current_status = session.get(TaskStatus, task.status_code)
+    if current_status and current_status.code in TERMINAL_STATUSES:
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content={"message": f"Task cannot be cancelled. Current status: {current_status.code}."},
+        )
+        
+    task.cancelled = True
+    session.commit()
+
+    return Message(message="Task cancelled successfully.")

@@ -28,9 +28,12 @@ async def download_reel(
     task_id: str,
     session: sqlmodel.Session = TaskiqDepends(get_db),
 ):
+    logger.info(f"Starting download for task {task_id} with shortcode {short_code}")
     in_progress_status = session.exec(sqlmodel.select(TaskStatus).where(TaskStatus.code == "in_progress")).one()
 
     task = session.get(Task, uuid.UUID(task_id))
+    if task and task.cancelled:
+        return "Task was cancelled."
     if task:
         task.status_code = in_progress_status.id
         session.commit()
@@ -54,6 +57,6 @@ async def download_reel(
 
     session.commit()
 
-    await extract_audio.kiq(str(db_download.id), task_id)
+    await extract_audio.kiq(download_id=str(db_download.id), task_id=task_id)
 
     return "Instagram reel downloaded successfully."

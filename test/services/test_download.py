@@ -86,7 +86,7 @@ async def test_download_reel_ok(get_post_mock_ok, download_post_mock_ok, extract
     db_session.refresh(task_in_db)
     assert task_in_db.download_id == db_download.id
 
-    extract_audio_kiq_mock.assert_called_once_with(str(db_download.id), str(task_in_db.id))
+    extract_audio_kiq_mock.assert_called_once_with(download_id=str(db_download.id), task_id=str(task_in_db.id))
 
 
 @pytest.mark.anyio
@@ -113,8 +113,8 @@ async def test_error_middleware_creates_task_error(task_in_db, db_session):
         task_id="test-task-id",
         task_name="app.services.download:download_reel",
         labels={"step": "download"},
-        args=["shortcode", str(task_in_db.id)],
-        kwargs={},
+        args=[],
+        kwargs={"short_code": "shortcode", "task_id": str(task_in_db.id)},
     )
     result = TaskiqResult(is_err=True, return_value=None, execution_time=0.1, labels={})
     exception = RuntimeError("Something went wrong")

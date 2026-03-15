@@ -63,6 +63,11 @@ async def transcribe_audio(
     task_id: str,
     session: sqlmodel.Session = TaskiqDepends(get_db),
 ):
+    logger.info(f"Starting transcription for task {task_id} with audio track ID {audio_track_id}")
+    task = session.get(Task, uuid.UUID(task_id))
+    if task and task.cancelled:
+        return "Task was cancelled."
+
     db_audio_track = session.get(AudioTrack, uuid.UUID(audio_track_id))
     if not db_audio_track:
         raise RuntimeError(f"AudioTrack {audio_track_id} not found.")

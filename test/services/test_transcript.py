@@ -119,7 +119,7 @@ async def test_transcribe_audio_api_error(whisper_mock_error, audio_track_in_db,
 
 @pytest.mark.anyio
 async def test_error_middleware_transcript_step(whisper_mock_error, audio_track_in_db, task_in_db, db_session):
-    await transcript.transcribe_audio.kiq(str(audio_track_in_db.id), str(task_in_db.id))
+    await transcript.transcribe_audio.kiq(audio_track_id=str(audio_track_in_db.id), task_id=str(task_in_db.id))
 
     db_session.expire_all()
 
