@@ -62,8 +62,10 @@ async def extract_topics_llm(transcription: str, openai_client: openai.AsyncOpen
     
     if not parsed or not parsed.topics:
         return None
+        
+    topics = [topic.strip() for topic in parsed.topics if topic.strip()]
     
-    return ", ".join(parsed.topics)
+    return ", ".join(topics) if topics else None
 
 @broker.task(step="transcript")
 async def transcribe_audio(
