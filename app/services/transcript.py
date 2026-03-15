@@ -39,8 +39,8 @@ async def extract_topics_llm(transcription: str, openai_client: openai.AsyncOpen
                 {
                     "role": "system",
                     "content": """Eres un experto en análisis de contenido.
-                Extrae los key topics de la transcripción proporcionada.
-                """
+                    Extrae los key topics de la transcripción proporcionada.
+                    """
                 },
                 {
                     "role": "user",
@@ -63,9 +63,7 @@ async def extract_topics_llm(transcription: str, openai_client: openai.AsyncOpen
     if not parsed or not parsed.topics:
         return None
     
-    topics = [topic.strip() for topic in parsed.topics if topic.strip()]
-    
-    return ", ".join(topics) if topics else None
+    return ", ".join(parsed.topics)
 
 @broker.task(step="transcript")
 async def transcribe_audio(
