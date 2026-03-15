@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 broker = taskiq_redis.RedisStreamBroker(
-    url="redis://localhost:6379",
+    url=os.environ.get("REDIS_URL", "redis://localhost:6379"),
 )
 
 

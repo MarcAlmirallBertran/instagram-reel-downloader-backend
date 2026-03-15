@@ -14,7 +14,7 @@ from app.services import transcript
 def task_in_db(db_session: sqlmodel.Session) -> Task:
     pending_status = db_session.exec(select(TaskStatus).where(TaskStatus.code == "pending")).one()
 
-    task = Task(url="https://www.instagram.com/reel/transcript_shortcode/", status_code=pending_status.id)
+    task = Task(url="https://www.instagram.com/reel/transcript_shortcode/", status_code=pending_status.id, user_id=uuid.uuid4())
     db_session.add(task)
     db_session.commit()
     db_session.refresh(task)
@@ -49,38 +49,39 @@ def audio_file(audio_track_in_db, tmp_path):
 
 
 @pytest.fixture()
-def whisper_mock_error(mocker, audio_file):
-    return mocker.patch(
-        "app.services.transcript.client.audio.transcriptions.create",
+def openai_client_mock(mocker):
+    mock_client = mocker.MagicMock()
+    mocker.patch("app.services.transcript._get_openai_client", return_value=mock_client)
+    return mock_client
+
+
+@pytest.fixture()
+def whisper_mock_error(mocker, openai_client_mock, audio_file):
+    openai_client_mock.audio.transcriptions.create = mocker.AsyncMock(
         side_effect=openai.RateLimitError(
             message="You exceeded your current quota",
             response=mocker.MagicMock(status_code=429),
             body={"message": "You exceeded your current quota", "type": "insufficient_quota", "param": None, "code": "insufficient_quota"},
-        ),
+        )
     )
+    return openai_client_mock
 
 
 @pytest.fixture()
-def topics_mock(mocker):
+def topics_mock(mocker, openai_client_mock):
     mock_response = mocker.MagicMock()
     mock_response.choices[0].message.parsed = transcript.Topics(topics=["cooking", "italy", "pasta"])
-    return mocker.patch(
-        "app.services.transcript.client.chat.completions.parse",
-        new_callable=mocker.AsyncMock,
-        return_value=mock_response,
-    )
+    openai_client_mock.chat.completions.parse = mocker.AsyncMock(return_value=mock_response)
+    return openai_client_mock
 
 
 @pytest.fixture()
-def whisper_mock(mocker, audio_file, topics_mock):
+def whisper_mock(mocker, openai_client_mock, audio_file, topics_mock):
     mock_response = mocker.MagicMock()
     mock_response.text = "Hello, this is a transcript."
     mock_response.language = "en"
-    return mocker.patch(
-        "app.services.transcript.client.audio.transcriptions.create",
-        new_callable=mocker.AsyncMock,
-        return_value=mock_response,
-    )
+    openai_client_mock.audio.transcriptions.create = mocker.AsyncMock(return_value=mock_response)
+    return openai_client_mock
 
 
 @pytest.mark.anyio
@@ -139,12 +140,9 @@ async def test_error_middleware_transcript_step(whisper_mock_error, audio_track_
 async def test_extract_topics_llm_ok(mocker):
     mock_response = MagicMock()
     mock_response.choices[0].message.parsed = transcript.Topics(topics=["cooking", " italy ", "pasta"])
-    mocker.patch(
-        "app.services.transcript.client.chat.completions.parse",
-        new_callable=mocker.AsyncMock,
-        return_value=mock_response,
-    )
-    result = await transcript.extract_topics_llm("Some transcription text")
+    mock_client = mocker.MagicMock()
+    mock_client.chat.completions.parse = mocker.AsyncMock(return_value=mock_response)
+    result = await transcript.extract_topics_llm("Some transcription text", mock_client)
     assert result == "cooking, italy, pasta"
 
 
@@ -152,12 +150,9 @@ async def test_extract_topics_llm_ok(mocker):
 async def test_extract_topics_llm_empty_list(mocker):
     mock_response = MagicMock()
     mock_response.choices[0].message.parsed = transcript.Topics(topics=[])
-    mocker.patch(
-        "app.services.transcript.client.chat.completions.parse",
-        new_callable=mocker.AsyncMock,
-        return_value=mock_response,
-    )
-    result = await transcript.extract_topics_llm("Some transcription text")
+    mock_client = mocker.MagicMock()
+    mock_client.chat.completions.parse = mocker.AsyncMock(return_value=mock_response)
+    result = await transcript.extract_topics_llm("Some transcription text", mock_client)
     assert result is None
 
 
@@ -165,26 +160,23 @@ async def test_extract_topics_llm_empty_list(mocker):
 async def test_extract_topics_llm_parse_failure(mocker):
     mock_response = MagicMock()
     mock_response.choices[0].message.parsed = None
-    mocker.patch(
-        "app.services.transcript.client.chat.completions.parse",
-        new_callable=mocker.AsyncMock,
-        return_value=mock_response,
-    )
-    result = await transcript.extract_topics_llm("Some transcription text")
+    mock_client = mocker.MagicMock()
+    mock_client.chat.completions.parse = mocker.AsyncMock(return_value=mock_response)
+    result = await transcript.extract_topics_llm("Some transcription text", mock_client)
     assert result is None
 
 
 @pytest.mark.anyio
 async def test_extract_topics_llm_api_error(mocker):
-    mocker.patch(
-        "app.services.transcript.client.chat.completions.parse",
+    mock_client = mocker.MagicMock()
+    mock_client.chat.completions.parse = mocker.AsyncMock(
         side_effect=openai.RateLimitError(
             message="You exceeded your current quota",
             response=mocker.MagicMock(status_code=429),
             body={"message": "You exceeded your current quota"},
-        ),
+        )
     )
-    result = await transcript.extract_topics_llm("Some transcription text")
+    result = await transcript.extract_topics_llm("Some transcription text", mock_client)
     assert result is None
 
 
@@ -193,13 +185,12 @@ async def test_transcribe_audio_topics_failure_still_completes(
     whisper_mock, audio_track_in_db, task_in_db, db_session, mocker
 ):
     """transcribe_audio completes successfully even when topics extraction fails."""
-    mocker.patch(
-        "app.services.transcript.client.chat.completions.parse",
+    whisper_mock.chat.completions.parse = mocker.AsyncMock(
         side_effect=openai.RateLimitError(
             message="You exceeded your current quota",
             response=mocker.MagicMock(status_code=429),
             body={"message": "You exceeded your current quota"},
-        ),
+        )
     )
     result = await transcript.transcribe_audio(str(audio_track_in_db.id), str(task_in_db.id), session=db_session)
     assert result == "Audio transcribed successfully."

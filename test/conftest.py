@@ -31,6 +31,14 @@ def client() -> Generator[TestClient, None, None]:
         yield c
 
 
+@pytest.fixture(scope="module")
+def auth_headers(client: TestClient) -> dict[str, str]:
+    client.post("/users", json={"username": "authtestuser", "password": "testpass123"})
+    resp = client.post("/users/login", data={"username": "authtestuser", "password": "testpass123"})
+    token = resp.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
 @pytest.fixture()
 def db_session() -> Generator[sqlmodel.Session, None, None]:
     with sqlmodel.Session(engine) as session:

@@ -1,3 +1,5 @@
+import uuid
+
 import pytest
 import sqlmodel
 from sqlmodel import select
@@ -12,7 +14,7 @@ from app.services import download
 def task_in_db(db_session: sqlmodel.Session) -> Task:
     pending_status = db_session.exec(select(TaskStatus).where(TaskStatus.code == "pending")).one()
 
-    task = Task(url="https://www.instagram.com/reel/shortcode/", status_code=pending_status.id)
+    task = Task(url="https://www.instagram.com/reel/shortcode/", status_code=pending_status.id, user_id=uuid.uuid4())
     db_session.add(task)
     db_session.commit()
     db_session.refresh(task)
@@ -43,27 +45,25 @@ def get_post_mock_not_found(mocker):
 
 
 @pytest.fixture()
-def download_post_mock_ok(mocker):
-    mocker.patch(
-        "app.services.download.L.download_post",
-        return_value=True,
-    )
+def loader_mock(mocker):
+    mock_loader = mocker.MagicMock()
+    mocker.patch("app.services.download._get_instaloader", return_value=mock_loader)
+    return mock_loader
 
 
 @pytest.fixture()
-def download_post_mock_connection_error(mocker):
-    mocker.patch(
-        "app.services.download.L.download_post",
-        side_effect=Exception("Connection error"),
-    )
+def download_post_mock_ok(loader_mock):
+    loader_mock.download_post.return_value = True
 
 
 @pytest.fixture()
-def download_post_mock_failed(mocker):
-    mocker.patch(
-        "app.services.download.L.download_post",
-        return_value=False,
-    )
+def download_post_mock_connection_error(loader_mock):
+    loader_mock.download_post.side_effect = Exception("Connection error")
+
+
+@pytest.fixture()
+def download_post_mock_failed(loader_mock):
+    loader_mock.download_post.return_value = False
 
 
 @pytest.fixture()

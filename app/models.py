@@ -42,10 +42,21 @@ class Task(sqlmodel.SQLModel, table=True):
     id:          uuid.UUID        = sqlmodel.Field(default_factory=uuid.uuid4, primary_key=True)
     url:         str
     status_code: uuid.UUID        = sqlmodel.Field(foreign_key="taskstatus.id")
+    user_id:     uuid.UUID        = sqlmodel.Field(foreign_key="user.id")
     download_id: uuid.UUID | None = sqlmodel.Field(default=None, foreign_key="download.id")
     cancelled:   bool             = sqlmodel.Field(default=False)
     created_at:  datetime         = sqlmodel.Field(default_factory=datetime.now)
-    updated_at:  datetime         = sqlmodel.Field(default_factory=datetime.now)
+    updated_at:  datetime         = sqlmodel.Field(default_factory=datetime.now, sa_column_kwargs={"onupdate": datetime.now})
+
+
+class User(sqlmodel.SQLModel, table=True):
+    id:              uuid.UUID = sqlmodel.Field(default_factory=uuid.uuid4, primary_key=True)
+    username:        str       = sqlmodel.Field(unique=True, index=True)
+    hashed_password: str
+    openai_api_key:      str | None = sqlmodel.Field(default=None)
+    instagram_username:  str | None = sqlmodel.Field(default=None)
+    instagram_password:  str | None = sqlmodel.Field(default=None)
+    created_at:      datetime  = sqlmodel.Field(default_factory=datetime.now)
 
 
 class TaskError(sqlmodel.SQLModel, table=True):

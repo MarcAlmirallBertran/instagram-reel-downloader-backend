@@ -14,7 +14,7 @@ from app.services import audio
 def task_in_db(db_session: sqlmodel.Session) -> Task:
     pending_status = db_session.exec(select(TaskStatus).where(TaskStatus.code == "pending")).one()
 
-    task = Task(url="https://www.instagram.com/reel/shortcode/", status_code=pending_status.id)
+    task = Task(url="https://www.instagram.com/reel/shortcode/", status_code=pending_status.id, user_id=uuid.uuid4())
     db_session.add(task)
     db_session.commit()
     db_session.refresh(task)
