@@ -1,4 +1,5 @@
 import logging
+import os
 import pathlib
 import tempfile
 import uuid
@@ -13,7 +14,7 @@ from app.core.encryption import decrypt
 from app.models import Download, Task, TaskStatus, User
 from app.services.audio import extract_audio
 
-media_dir = pathlib.Path(tempfile.gettempdir()) / "reels"
+media_dir = pathlib.Path(os.environ.get("MEDIA_DIR", pathlib.Path(tempfile.gettempdir()) / "reels"))
 media_dir.mkdir(exist_ok=True)
 logger = logging.getLogger(__name__)
 

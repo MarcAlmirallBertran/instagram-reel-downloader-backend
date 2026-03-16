@@ -38,13 +38,11 @@ async def extract_topics_llm(transcription: str, openai_client: openai.AsyncOpen
             messages=[
                 {
                     "role": "system",
-                    "content": """Eres un experto en análisis de contenido.
-                    Extrae los key topics de la transcripción proporcionada.
-                    """
+                    "content": "You are a content analysis expert. Extract the key topics from the provided transcription. Always return topics in English, regardless of the original language of the transcription."
                 },
                 {
                     "role": "user",
-                    "content": f"Transcripción del reel:\n\n{transcription}"
+                    "content": f"Reel transcription:\n\n{transcription}"
                 }
             ],
             temperature=0.3,

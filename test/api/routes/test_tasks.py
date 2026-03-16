@@ -1,4 +1,6 @@
+import io
 import uuid
+import zipfile
 
 import sqlmodel
 from fastapi.testclient import TestClient
@@ -6,7 +8,7 @@ from fastapi import status
 import pytest
 from sqlmodel import select
 
-from app.models import Task, TaskError, TaskStatus, TaskStep
+from app.models import Download, Task, TaskError, TaskStatus, TaskStep
 
 
 @pytest.fixture()
@@ -193,3 +195,50 @@ def test_get_task_includes_errors(get_task_mock, client: TestClient, auth_header
     assert data["errors"][0]["step"] == "audio"
     assert data["errors"][0]["message"] == "audio failed"
     assert data["errors"][0]["detail"] == "ffmpeg error"
+
+
+# --- files (zip) endpoint ---
+
+def test_get_files_not_ready(get_task_mock, client: TestClient, auth_headers: dict):
+    resp = client.post("/tasks", json={"uri": "https://www.instagram.com/reel/files_notready_sc/"}, headers=auth_headers)
+    task_id = resp.json()["task_id"]
+    response = client.get(f"/tasks/{task_id}/files", headers=auth_headers)
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+def test_get_files_task_not_found(client: TestClient, auth_headers: dict):
+    response = client.get(f"/tasks/{uuid.uuid4()}/files", headers=auth_headers)
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+def test_get_files_ok(get_task_mock, client: TestClient, auth_headers: dict, db_session: sqlmodel.Session, tmp_path):
+    resp = client.post("/tasks", json={"uri": "https://www.instagram.com/reel/files_ok_sc/"}, headers=auth_headers)
+    task_id = uuid.UUID(resp.json()["task_id"])
+
+    # create fake files in a temp directory
+    task_dir = tmp_path / str(task_id)
+    task_dir.mkdir()
+    (task_dir / "files_ok_sc.mp4").write_bytes(b"fake video")
+    (task_dir / "files_ok_sc.mp3").write_bytes(b"fake audio")
+    (task_dir / "files_ok_sc.txt").write_text("fake transcript")
+
+    db_download = Download(shortcode="files_ok_sc", file_path=str(task_dir), task_id=task_id)
+    db_session.add(db_download)
+    db_session.commit()
+    db_session.refresh(db_download)
+
+    task = db_session.get(Task, task_id)
+    assert task is not None
+    task.download_id = db_download.id
+    db_session.commit()
+
+    response = client.get(f"/tasks/{task_id}/files", headers=auth_headers)
+    assert response.status_code == status.HTTP_200_OK
+    assert response.headers["content-type"] == "application/zip"
+    assert f"{task_id}.zip" in response.headers["content-disposition"]
+
+    zf = zipfile.ZipFile(io.BytesIO(response.content))
+    names = zf.namelist()
+    assert "files_ok_sc.mp4" in names
+    assert "files_ok_sc.mp3" in names
+    assert "files_ok_sc.txt" in names

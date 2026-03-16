@@ -7,9 +7,10 @@ FastAPI backend that downloads Instagram reels, extracts audio, and transcribes 
 - Download Instagram reels by URL
 - Extract audio from downloaded videos (ffmpeg + pydub)
 - Transcribe audio and extract topics (OpenAI Whisper + GPT-4o-mini)
+- Download all task files as a ZIP archive
 - Async task pipeline via Taskiq + Redis
 - JWT authentication with per-user Fernet-encrypted credentials
-- Docker Compose for easy setup
+- Docker Compose for one-command setup
 
 ## Prerequisites
 
@@ -58,6 +59,7 @@ uv run taskiq worker app.broker:broker      # Task worker
 | `DATABASE_URL` | `postgresql://postgres:1234@localhost:5432/postgres` | PostgreSQL connection string. |
 | `REDIS_URL` | `redis://localhost:6379` | Redis connection string (used by Taskiq broker). |
 | `OPENAI_API_KEY` | — | Fallback OpenAI key. Each user can configure their own via `PATCH /users/me`. |
+| `MEDIA_DIR` | `{tempdir}/reels` (local) / `/data/reels` (Docker) | Directory where downloaded media files are stored. |
 
 ## API overview
 
@@ -80,6 +82,7 @@ uv run taskiq worker app.broker:broker      # Task worker
 | `GET` | `/tasks/{id}/video` | Stream the downloaded video file |
 | `GET` | `/tasks/{id}/audio` | Stream the extracted audio file |
 | `GET` | `/tasks/{id}/transcript` | Get the transcript and extracted topics |
+| `GET` | `/tasks/{id}/files` | Download all task files as a ZIP archive |
 | `POST` | `/tasks/{id}/cancel` | Cancel a pending or in-progress task |
 
 ## Task pipeline

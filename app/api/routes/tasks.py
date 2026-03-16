@@ -1,11 +1,14 @@
+import io
 import logging
 import pathlib
+import re
 import uuid
+import zipfile
 from datetime import datetime
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, status
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from pydantic.main import BaseModel
 
 from sqlmodel import select
@@ -151,6 +154,8 @@ def _get_task_for_user(task_id: uuid.UUID, current_user, session) -> Task | JSON
         200: {"content": {"video/mp4": {}}, "description": "Reel video file."},
         404: {"model": Message, "description": "Task or video not found."},
     },
+    status_code=status.HTTP_200_OK,
+    response_class=FileResponse,
 )
 async def get_task_video(task_id: uuid.UUID, session: SessionDep, current_user: CurrentUserDep):
     task = _get_task_for_user(task_id, current_user, session)
@@ -176,6 +181,7 @@ async def get_task_video(task_id: uuid.UUID, session: SessionDep, current_user: 
         200: {"content": {"audio/mpeg": {}}, "description": "Extracted audio file."},
         404: {"model": Message, "description": "Task or audio not found."},
     },
+    response_class=FileResponse,
 )
 async def get_task_audio(task_id: uuid.UUID, session: SessionDep, current_user: CurrentUserDep):
     task = _get_task_for_user(task_id, current_user, session)
@@ -201,6 +207,8 @@ async def get_task_audio(task_id: uuid.UUID, session: SessionDep, current_user: 
         200: {"content": {"text/plain": {}}, "description": "Transcript text."},
         404: {"model": Message, "description": "Task or transcript not found."},
     },
+    status_code=status.HTTP_200_OK,
+    response_class=PlainTextResponse,
 )
 async def get_task_transcript(task_id: uuid.UUID, session: SessionDep, current_user: CurrentUserDep):
     task = _get_task_for_user(task_id, current_user, session)
@@ -222,6 +230,44 @@ async def get_task_transcript(task_id: uuid.UUID, session: SessionDep, current_u
         return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content={"message": "Transcript not available yet."})
 
     return PlainTextResponse(pathlib.Path(db_transcript.file_path).read_text(encoding="utf-8"))
+
+
+@router.get(
+    "/{task_id}/files",
+    responses={
+        200: {"content": {"application/zip": {}}, "description": "ZIP archive with all available task files."},
+        404: {"model": Message, "description": "Task or files not found."},
+    },
+    status_code=status.HTTP_200_OK,
+    response_class=FileResponse,
+)
+async def get_task_files(task_id: uuid.UUID, session: SessionDep, current_user: CurrentUserDep):
+    task = _get_task_for_user(task_id, current_user, session)
+    if isinstance(task, JSONResponse):
+        return task
+
+    if not task.download_id:
+        return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content={"message": "Files not available yet."})
+
+    db_download = session.get(Download, task.download_id)
+    if not db_download:
+        return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content={"message": "Files not available yet."})
+
+    files = list(pathlib.Path(db_download.file_path).glob("*.*"))
+    if not files:
+        return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content={"message": "No files found for this task."})
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for f in files:
+            zf.write(f, arcname=f.name)
+    buf.seek(0)
+
+    return StreamingResponse(
+        buf,
+        media_type="application/zip",
+        headers={"Content-Disposition": f"attachment; filename={task_id}.zip"},
+    )
 
 
 @router.post(
