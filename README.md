@@ -58,7 +58,7 @@ uv run taskiq worker app.broker:broker      # Task worker
 | `JWT_SECRET_KEY` | `dev-secret-change-in-production` | Signs/verifies JWT tokens. Change in production. |
 | `DATABASE_URL` | `postgresql://postgres:1234@localhost:5432/postgres` | PostgreSQL connection string. |
 | `REDIS_URL` | `redis://localhost:6379` | Redis connection string (used by Taskiq broker). |
-| `OPENAI_API_KEY` | — | Fallback OpenAI key. Each user can configure their own via `PATCH /users/me`. |
+| `OPENAI_API_KEY` | — | Not used at runtime. Each user must configure their own key via `PATCH /users/me`. |
 | `MEDIA_DIR` | `{tempdir}/reels` (local) / `/data/reels` (Docker) | Directory where downloaded media files are stored. |
 
 ## API overview
@@ -77,7 +77,7 @@ uv run taskiq worker app.broker:broker      # Task worker
 | Method | Path | Description |
 |---|---|---|
 | `POST` | `/tasks` | Create a new task from an Instagram reel URL |
-| `GET` | `/tasks` | List all tasks for the authenticated user |
+| `GET` | `/tasks` | List tasks. Optional query params: `status`, `sort_by` (`created_at`\|`updated_at`), `sort_order` (`asc`\|`desc`) |
 | `GET` | `/tasks/{id}` | Get task detail and current status |
 | `GET` | `/tasks/{id}/video` | Stream the downloaded video file |
 | `GET` | `/tasks/{id}/audio` | Stream the extracted audio file |
@@ -121,4 +121,4 @@ uv run pytest -k test_download_reel_ok
 - **Download**: instaloader
 - **Audio**: pydub, ffmpeg
 - **Transcription**: OpenAI Whisper (`whisper-1`), GPT-4o-mini
-- **Auth**: bcrypt, JWT (python-jose), Fernet (cryptography)
+- **Auth**: bcrypt, JWT (PyJWT), Fernet (cryptography)

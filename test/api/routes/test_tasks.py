@@ -1,6 +1,7 @@
 import io
 import uuid
 import zipfile
+from datetime import datetime
 
 import sqlmodel
 from fastapi.testclient import TestClient
@@ -195,6 +196,70 @@ def test_get_task_includes_errors(get_task_mock, client: TestClient, auth_header
     assert data["errors"][0]["step"] == "audio"
     assert data["errors"][0]["message"] == "audio failed"
     assert data["errors"][0]["detail"] == "ffmpeg error"
+
+
+# --- list_tasks filtering and sorting ---
+
+def test_list_tasks_filter_by_status(get_task_mock, client: TestClient, auth_headers: dict, db_session: sqlmodel.Session):
+    resp = client.post("/tasks", json={"uri": "https://www.instagram.com/reel/filter_pending_sc/"}, headers=auth_headers)
+    pending_id = resp.json()["task_id"]
+
+    resp2 = client.post("/tasks", json={"uri": "https://www.instagram.com/reel/filter_completed_sc/"}, headers=auth_headers)
+    completed_id = resp2.json()["task_id"]
+
+    completed_status = db_session.exec(select(TaskStatus).where(TaskStatus.code == "completed")).one()
+    task = db_session.get(Task, uuid.UUID(completed_id))
+    assert task is not None
+    task.status_code = completed_status.id
+    db_session.commit()
+
+    response = client.get("/tasks?status=pending", headers=auth_headers)
+    assert response.status_code == status.HTTP_200_OK
+    ids = [t["id"] for t in response.json()]
+    assert pending_id in ids
+    assert completed_id not in ids
+
+
+def test_list_tasks_filter_invalid_status(client: TestClient, auth_headers: dict):
+    response = client.get("/tasks?status=not_a_real_status", headers=auth_headers)
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json() == []
+
+
+def test_list_tasks_sort_order_asc(get_task_mock, client: TestClient, auth_headers: dict, db_session: sqlmodel.Session):
+    resp1 = client.post("/tasks", json={"uri": "https://www.instagram.com/reel/sort_asc_sc1/"}, headers=auth_headers)
+    resp2 = client.post("/tasks", json={"uri": "https://www.instagram.com/reel/sort_asc_sc2/"}, headers=auth_headers)
+    id1, id2 = resp1.json()["task_id"], resp2.json()["task_id"]
+
+    task1 = db_session.get(Task, uuid.UUID(id1))
+    task2 = db_session.get(Task, uuid.UUID(id2))
+    task1.created_at = datetime(2020, 1, 1)
+    task2.created_at = datetime(2020, 1, 2)
+    db_session.commit()
+
+    response = client.get("/tasks?sort_by=created_at&sort_order=asc", headers=auth_headers)
+    assert response.status_code == status.HTTP_200_OK
+    tasks = response.json()
+    ids = [t["id"] for t in tasks]
+    assert ids.index(id1) < ids.index(id2)
+
+
+def test_list_tasks_sort_order_desc(get_task_mock, client: TestClient, auth_headers: dict, db_session: sqlmodel.Session):
+    resp1 = client.post("/tasks", json={"uri": "https://www.instagram.com/reel/sort_desc_sc1/"}, headers=auth_headers)
+    resp2 = client.post("/tasks", json={"uri": "https://www.instagram.com/reel/sort_desc_sc2/"}, headers=auth_headers)
+    id1, id2 = resp1.json()["task_id"], resp2.json()["task_id"]
+
+    task1 = db_session.get(Task, uuid.UUID(id1))
+    task2 = db_session.get(Task, uuid.UUID(id2))
+    task1.created_at = datetime(2020, 1, 1)
+    task2.created_at = datetime(2020, 1, 2)
+    db_session.commit()
+
+    response = client.get("/tasks?sort_by=created_at&sort_order=desc", headers=auth_headers)
+    assert response.status_code == status.HTTP_200_OK
+    tasks = response.json()
+    ids = [t["id"] for t in tasks]
+    assert ids.index(id2) < ids.index(id1)
 
 
 # --- files (zip) endpoint ---

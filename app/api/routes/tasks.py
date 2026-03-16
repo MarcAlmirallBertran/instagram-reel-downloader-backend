@@ -5,9 +5,10 @@ import re
 import uuid
 import zipfile
 from datetime import datetime
+from typing import Literal
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Query, status
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from pydantic.main import BaseModel
 
@@ -91,8 +92,29 @@ def _get_errors_for_task(task_id: uuid.UUID, session) -> list[ErrorDetail]:
 
 
 @router.get("", status_code=status.HTTP_200_OK, response_model=list[TaskListItem])
-async def list_tasks(session: SessionDep, current_user: CurrentUserDep):
-    tasks = session.exec(select(Task).where(Task.user_id == current_user.id)).all()
+async def list_tasks(
+    session: SessionDep,
+    current_user: CurrentUserDep,
+    status: str | None = Query(default=None, description="Filter by task status (e.g. pending, in_progress, processing, completed, failed, cancelled)"),
+    sort_by: Literal["created_at", "updated_at"] = Query(default="created_at", description="Field to sort by"),
+    sort_order: Literal["asc", "desc"] = Query(default="desc", description="Sort order"),
+):
+    query = select(Task).where(Task.user_id == current_user.id)
+
+    if status:
+        status_row = session.exec(select(TaskStatus).where(TaskStatus.code == status)).one_or_none()
+        if status_row:
+            query = query.where(Task.status_code == status_row.id)
+        else:
+            return []
+
+    sort_column = Task.updated_at if sort_by == "updated_at" else Task.created_at
+    if sort_order == "desc":
+        query = query.order_by(sort_column.desc())
+    else:
+        query = query.order_by(sort_column.asc())
+
+    tasks = session.exec(query).all()
     statuses = {s.id: s.code for s in session.exec(select(TaskStatus)).all()}
     return [
         TaskListItem(
