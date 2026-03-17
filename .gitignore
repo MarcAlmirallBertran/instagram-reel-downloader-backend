@@ -209,3 +209,4 @@ __marimo__/
 # Claude
 CLAUDE.md
 .claude
+.DS_Store
