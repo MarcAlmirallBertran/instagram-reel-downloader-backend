@@ -1,4 +1,5 @@
 import logging
+import mimetypes
 import os
 import pathlib
 import tempfile
@@ -8,13 +9,15 @@ import instaloader
 import sqlmodel
 from taskiq import TaskiqDepends
 
-from app.broker import broker
 from app.api.deps import get_db
+from app.broker import broker
 from app.core.encryption import decrypt
-from app.models import Download, Task, TaskStatus, User
+from app.models import File, Task, TaskStatus, User
 from app.services.audio import extract_audio
 
-media_dir = pathlib.Path(os.environ.get("MEDIA_DIR", pathlib.Path(tempfile.gettempdir()) / "reels"))
+media_dir = pathlib.Path(
+    os.environ.get("MEDIA_DIR", pathlib.Path(tempfile.gettempdir()) / "reels")
+)
 media_dir.mkdir(exist_ok=True)
 logger = logging.getLogger(__name__)
 
@@ -34,40 +37,56 @@ def _get_instaloader(session: sqlmodel.Session, task: Task) -> instaloader.Insta
 
 @broker.task(step="download")
 async def download_reel(
-    short_code: str,
     task_id: str,
     session: sqlmodel.Session = TaskiqDepends(get_db),
 ):
-    logger.info(f"Starting download for task {task_id} with shortcode {short_code}")
-    in_progress_status = session.exec(sqlmodel.select(TaskStatus).where(TaskStatus.code == "in_progress")).one()
+    logger.info(f"Starting download video for task {task_id}")
 
-    task = session.get(Task, uuid.UUID(task_id))
-    if not task:
-        raise RuntimeError(f"Task with id {task_id} not found.")
-    elif task.cancelled:
+    task = session.exec(
+        sqlmodel.select(Task).where(Task.id == uuid.UUID(task_id))
+    ).one()
+    
+    if task.cancelled:
         return "Task was cancelled."
         
+    in_progress_status = session.exec(
+        sqlmodel.select(TaskStatus).where(TaskStatus.code == "in_progress")
+    ).one()
+
     task.status_code = in_progress_status.id
     session.commit()
 
     loader = _get_instaloader(session, task)
 
-    post = instaloader.structures.Post.from_shortcode(loader.context, short_code)
+    post = instaloader.structures.Post.from_shortcode(loader.context, task.short_code)
 
     target = media_dir.joinpath(task_id)
     download_response = loader.download_post(post, target=target)
 
     if not download_response:
-        raise RuntimeError(f"Failed to download the Instagram reel for shortcode {short_code}.")
+        raise RuntimeError(
+            f"Failed to download the Instagram reel for shortcode {task.short_code}."
+        )
 
-    db_download = Download(
-        shortcode=post.shortcode,
-        file_path=str(target),
-    )
-    session.add(db_download)
-    task.download_id = db_download.id
+    for file_path in target.iterdir():
+        if not file_path.is_file():
+            continue
+
+        mime_type, _ = mimetypes.guess_type(file_path.name)
+        if mime_type is None:
+            logger.debug(f"Skipping file with unknown MIME type: {file_path}")
+            continue
+
+        db_file = File(path=str(file_path), mime_type=mime_type)
+        session.add(db_file)
+
+        if mime_type.startswith("video/"):
+            task.video_id = db_file.id
+        elif mime_type.startswith("image/"):
+            task.thumbnail_id = db_file.id
+
     session.commit()
 
-    await extract_audio.kiq(download_id=str(db_download.id), task_id=task_id)
+    await extract_audio.kiq(task_id=task_id)
 
     return "Instagram reel downloaded successfully."

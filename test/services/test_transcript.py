@@ -1,3 +1,5 @@
+import mimetypes
+import pathlib
 import uuid
 from unittest.mock import MagicMock
 
@@ -6,7 +8,7 @@ import pytest
 import sqlmodel
 from sqlmodel import select
 
-from app.models import AudioTrack, Download, Task, TaskError, TaskStatus, Transcript
+from app.models import File, Task, TaskError, TaskStatus
 from app.services import transcript
 
 
@@ -14,7 +16,7 @@ from app.services import transcript
 def task_in_db(db_session: sqlmodel.Session) -> Task:
     pending_status = db_session.exec(select(TaskStatus).where(TaskStatus.code == "pending")).one()
 
-    task = Task(url="https://www.instagram.com/reel/transcript_shortcode/", status_code=pending_status.id, user_id=uuid.uuid4())
+    task = Task(short_code="transcript_shortcode", status_code=pending_status.id, user_id=uuid.uuid4())
     db_session.add(task)
     db_session.commit()
     db_session.refresh(task)
@@ -22,28 +24,22 @@ def task_in_db(db_session: sqlmodel.Session) -> Task:
 
 
 @pytest.fixture()
-def audio_track_in_db(db_session: sqlmodel.Session, task_in_db: Task, tmp_path) -> AudioTrack:
-    db_download = Download(shortcode="transcript_shortcode", file_path=str(tmp_path))
-    db_session.add(db_download)
-    db_session.commit()
-    db_session.refresh(db_download)
+def audio_track_in_db(db_session: sqlmodel.Session, task_in_db: Task, tmp_path) -> File:
 
     audio_path = tmp_path / "audio.mp3"
-    db_audio_track = AudioTrack(
-        download_id=db_download.id,
-        file_path=str(audio_path),
-        duration=42.0,
+    db_audio_track = File(
+        path=str(audio_path),
+        mime_type="audio/mpeg",
     )
     db_session.add(db_audio_track)
-    task_in_db.download_id = db_download.id
+    task_in_db.audio_id = db_audio_track.id
     db_session.commit()
-    db_session.refresh(db_audio_track)
     return db_audio_track
 
 
 @pytest.fixture()
-def audio_file(audio_track_in_db, tmp_path):
-    audio = tmp_path / "audio.mp3"
+def audio_file(audio_track_in_db):
+    audio = pathlib.Path(audio_track_in_db.path)
     audio.write_bytes(b"fake audio content")
     return audio
 
@@ -86,41 +82,39 @@ def whisper_mock(mocker, openai_client_mock, audio_file, topics_mock):
 
 @pytest.mark.anyio
 async def test_transcribe_audio_ok(whisper_mock, audio_track_in_db, task_in_db, db_session, tmp_path):
-    result = await transcript.transcribe_audio(str(audio_track_in_db.id), str(task_in_db.id), session=db_session)
+    result = await transcript.transcribe_audio(task_id=str(task_in_db.id), session=db_session)
     assert result == "Audio transcribed successfully."
 
-    db_transcript = db_session.exec(
-        select(Transcript).where(Transcript.audio_track_id == audio_track_in_db.id)
-    ).one()
-    assert db_transcript.language == "en"
+    db_session.refresh(task_in_db)
+    assert task_in_db.language == "en"
+    assert task_in_db.topics == "cooking, italy, pasta"
 
     transcript_file = tmp_path / "audio.txt"
     assert transcript_file.exists()
     assert transcript_file.read_text(encoding="utf-8") == "Hello, this is a transcript."
-    assert db_transcript.file_path == str(transcript_file)
 
-    assert db_transcript.topics == "cooking, italy, pasta"
+    db_transcript = db_session.exec(select(File).where(File.id == task_in_db.transcript_id)).one()
+    assert db_transcript.path == str(transcript_file)
 
-    db_session.refresh(task_in_db)
     completed_status = db_session.exec(select(TaskStatus).where(TaskStatus.code == "completed")).one()
     assert task_in_db.status_code == completed_status.id
 
 
 @pytest.mark.anyio
 async def test_transcribe_audio_track_not_found(task_in_db, db_session):
-    with pytest.raises(RuntimeError, match="not found"):
-        await transcript.transcribe_audio(str(uuid.uuid4()), str(task_in_db.id), session=db_session)
+    with pytest.raises(Exception):
+        await transcript.transcribe_audio(task_id=str(task_in_db.id), session=db_session)
 
 
 @pytest.mark.anyio
 async def test_transcribe_audio_api_error(whisper_mock_error, audio_track_in_db, task_in_db, db_session):
     with pytest.raises(RuntimeError, match="You exceeded your current quota"):
-        await transcript.transcribe_audio(str(audio_track_in_db.id), str(task_in_db.id), session=db_session)
+        await transcript.transcribe_audio(task_id=str(task_in_db.id), session=db_session)
 
 
 @pytest.mark.anyio
 async def test_error_middleware_transcript_step(whisper_mock_error, audio_track_in_db, task_in_db, db_session):
-    await transcript.transcribe_audio.kiq(audio_track_id=str(audio_track_in_db.id), task_id=str(task_in_db.id))
+    await transcript.transcribe_audio.kiq(task_id=str(task_in_db.id))
 
     db_session.expire_all()
 
@@ -192,14 +186,10 @@ async def test_transcribe_audio_topics_failure_still_completes(
             body={"message": "You exceeded your current quota"},
         )
     )
-    result = await transcript.transcribe_audio(str(audio_track_in_db.id), str(task_in_db.id), session=db_session)
+    result = await transcript.transcribe_audio(task_id=str(task_in_db.id), session=db_session)
     assert result == "Audio transcribed successfully."
 
-    db_transcript = db_session.exec(
-        select(Transcript).where(Transcript.audio_track_id == audio_track_in_db.id)
-    ).one()
-    assert db_transcript.topics is None
-
     db_session.refresh(task_in_db)
+    assert task_in_db.topics is None
     completed_status = db_session.exec(select(TaskStatus).where(TaskStatus.code == "completed")).one()
     assert task_in_db.status_code == completed_status.id

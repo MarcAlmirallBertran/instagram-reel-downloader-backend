@@ -57,7 +57,7 @@ class ErrorHandlerMiddleware(TaskiqMiddleware):
         if isinstance(exception, TaskCancelledException):
             return
 
-        task_id = message.kwargs.get("task_id")
+        task_id: str | None = message.kwargs.get("task_id")
         step: str | None = message.labels.get("step")
 
         if not task_id or not step:
@@ -65,19 +65,18 @@ class ErrorHandlerMiddleware(TaskiqMiddleware):
             
         logger.error(f"Error in task {task_id} at step {step}: {exception}")
         with sqlmodel.Session(engine) as session:
-            step_record = session.exec(select(TaskStep).where(TaskStep.code == step)).one_or_none()
-            if not step_record:
-                return
-
-            session.add(TaskError(
-                task_id=uuid.UUID(task_id),
+            step_record = session.exec(select(TaskStep).where(TaskStep.code == step)).one()
+            task = session.exec(select(Task).where(Task.id == uuid.UUID(task_id))).one()
+            
+            task_error = TaskError(
+                task_id=task.id,
                 step_code=step_record.id,
                 message=str(exception),
-            ))
+                detail=getattr(exception, "detail", None),
+            )
+            session.add(task_error)
 
             failed_status = session.exec(select(TaskStatus).where(TaskStatus.code == "failed")).one()
-            task = session.get(Task, uuid.UUID(task_id))
-            if task:
-                task.status_code = failed_status.id
+            task.status_code = failed_status.id
 
             session.commit()

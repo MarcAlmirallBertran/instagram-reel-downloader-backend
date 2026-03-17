@@ -6,7 +6,7 @@ from sqlmodel import select
 from taskiq import TaskiqMessage, TaskiqResult
 
 from app.middlewares import ErrorHandlerMiddleware
-from app.models import Download, Task, TaskError, TaskStatus
+from app.models import File, Task, TaskError, TaskStatus
 from app.services import download
 
 
@@ -14,7 +14,7 @@ from app.services import download
 def task_in_db(db_session: sqlmodel.Session) -> Task:
     pending_status = db_session.exec(select(TaskStatus).where(TaskStatus.code == "pending")).one()
 
-    task = Task(url="https://www.instagram.com/reel/shortcode/", status_code=pending_status.id, user_id=uuid.uuid4())
+    task = Task(short_code="shortcode", status_code=pending_status.id, user_id=uuid.uuid4())
     db_session.add(task)
     db_session.commit()
     db_session.refresh(task)
@@ -76,35 +76,35 @@ def extract_audio_kiq_mock(mocker):
 
 @pytest.mark.anyio
 async def test_download_reel_ok(get_post_mock_ok, download_post_mock_ok, extract_audio_kiq_mock, task_in_db, db_session):
-    result = await download.download_reel("shortcode", str(task_in_db.id), session=db_session)
+    task_dir = download.media_dir / str(task_in_db.id)
+    task_dir.mkdir(parents=True, exist_ok=True)
+    (task_dir / "shortcode.mp4").write_bytes(b"fake video")
+
+    result = await download.download_reel(task_id=str(task_in_db.id), session=db_session)
     assert result == "Instagram reel downloaded successfully."
 
-    db_download = db_session.exec(select(Download).where(Download.shortcode == "shortcode")).one()
-    assert db_download is not None
-    assert db_download.shortcode == "shortcode"
-
     db_session.refresh(task_in_db)
-    assert task_in_db.download_id == db_download.id
+    assert task_in_db.video_id is not None
 
-    extract_audio_kiq_mock.assert_called_once_with(download_id=str(db_download.id), task_id=str(task_in_db.id))
+    extract_audio_kiq_mock.assert_called_once_with(task_id=str(task_in_db.id))
 
 
 @pytest.mark.anyio
 async def test_download_reel_post_not_found(get_post_mock_not_found, task_in_db, db_session):
     with pytest.raises(Exception, match="Post not found"):
-        await download.download_reel("shortcode", str(task_in_db.id), session=db_session)
+        await download.download_reel(task_id=str(task_in_db.id), session=db_session)
 
 
 @pytest.mark.anyio
 async def test_download_reel_connection_error(get_post_mock_ok, download_post_mock_connection_error, task_in_db, db_session):
     with pytest.raises(Exception, match="Connection error"):
-        await download.download_reel("shortcode", str(task_in_db.id), session=db_session)
+        await download.download_reel(task_id=str(task_in_db.id), session=db_session)
 
 
 @pytest.mark.anyio
 async def test_download_reel_failed(get_post_mock_ok, download_post_mock_failed, task_in_db, db_session):
     with pytest.raises(RuntimeError, match="Failed to download"):
-        await download.download_reel("shortcode", str(task_in_db.id), session=db_session)
+        await download.download_reel(task_id=str(task_in_db.id), session=db_session)
 
 
 @pytest.mark.anyio

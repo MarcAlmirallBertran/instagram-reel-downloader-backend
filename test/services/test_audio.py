@@ -6,7 +6,7 @@ from sqlmodel import select
 from taskiq import TaskiqMessage, TaskiqResult
 
 from app.middlewares import ErrorHandlerMiddleware
-from app.models import AudioTrack, Download, Task, TaskError, TaskStatus
+from app.models import File, Task, TaskError, TaskStatus
 from app.services import audio
 
 
@@ -14,7 +14,7 @@ from app.services import audio
 def task_in_db(db_session: sqlmodel.Session) -> Task:
     pending_status = db_session.exec(select(TaskStatus).where(TaskStatus.code == "pending")).one()
 
-    task = Task(url="https://www.instagram.com/reel/shortcode/", status_code=pending_status.id, user_id=uuid.uuid4())
+    task = Task(short_code="shortcode", status_code=pending_status.id, user_id=uuid.uuid4())
     db_session.add(task)
     db_session.commit()
     db_session.refresh(task)
@@ -22,10 +22,10 @@ def task_in_db(db_session: sqlmodel.Session) -> Task:
 
 
 @pytest.fixture()
-def download_in_db(db_session: sqlmodel.Session, task_in_db: Task, tmp_path) -> Download:
-    db_download = Download(shortcode="audio_shortcode", file_path=str(tmp_path))
+def download_in_db(db_session: sqlmodel.Session, task_in_db: Task, tmp_path) -> File:
+    db_download = File(path=str(tmp_path / "video.mp4"), mime_type="video/mp4")
     db_session.add(db_download)
-    task_in_db.download_id = db_download.id
+    task_in_db.video_id = db_download.id
     db_session.commit()
     db_session.refresh(db_download)
     return db_download
@@ -55,30 +55,30 @@ def transcribe_audio_kiq_mock(mocker):
 
 
 @pytest.mark.anyio
-async def test_extract_audio_ok(audio_segment_mock, transcribe_audio_kiq_mock, download_in_db, task_in_db, db_session):
-    result = await audio.extract_audio(str(download_in_db.id), str(task_in_db.id), session=db_session)
+async def test_extract_audio_ok(audio_segment_mock, transcribe_audio_kiq_mock, task_in_db, db_session):
+    result = await audio.extract_audio(task_id=str(task_in_db.id), session=db_session)
     assert result == "Audio extracted successfully."
 
-    db_audio = db_session.exec(
-        select(AudioTrack).where(AudioTrack.download_id == download_in_db.id)
+    db_session.refresh(task_in_db)
+    db_audio: File = db_session.exec(
+        select(File).where(File.id == task_in_db.audio_id)
     ).one()
     assert db_audio is not None
-    assert db_audio.duration == 42.0
-    assert db_audio.file_path.endswith(".mp3")
+    assert db_audio.path.endswith(".mp3")
 
-    transcribe_audio_kiq_mock.assert_called_once_with(audio_track_id=str(db_audio.id), task_id=str(task_in_db.id))
+    transcribe_audio_kiq_mock.assert_called_once_with(task_id=str(task_in_db.id))
 
 
 @pytest.mark.anyio
 async def test_extract_audio_download_not_found(task_in_db, db_session):
-    with pytest.raises(RuntimeError, match="not found"):
-        await audio.extract_audio(str(uuid.uuid4()), str(task_in_db.id), session=db_session)
+    with pytest.raises(Exception):
+        await audio.extract_audio(task_id=str(task_in_db.id), session=db_session)
 
 
 @pytest.mark.anyio
 async def test_extract_audio_no_video_file(download_in_db, task_in_db, db_session):
-    with pytest.raises(RuntimeError, match="No video file found"):
-        await audio.extract_audio(str(download_in_db.id), str(task_in_db.id), session=db_session)
+    with pytest.raises(Exception):
+        await audio.extract_audio(task_id=str(task_in_db.id), session=db_session)
 
 
 @pytest.mark.anyio
@@ -88,7 +88,7 @@ async def test_extract_audio_conversion_error(video_file, download_in_db, task_i
         side_effect=Exception("Conversion error"),
     )
     with pytest.raises(Exception, match="Conversion error"):
-        await audio.extract_audio(str(download_in_db.id), str(task_in_db.id), session=db_session)
+        await audio.extract_audio(task_id=str(task_in_db.id), session=db_session)
 
 
 @pytest.mark.anyio

@@ -13,7 +13,7 @@ from app.models import Task, TaskError, TaskStatus
 @pytest.fixture()
 def task_in_db(db_session: sqlmodel.Session) -> Task:
     pending_status = db_session.exec(select(TaskStatus).where(TaskStatus.code == "pending")).one()
-    task = Task(url="https://www.instagram.com/reel/middleware_shortcode/", status_code=pending_status.id, user_id=uuid.uuid4())
+    task = Task(short_code="middleware_shortcode", status_code=pending_status.id, user_id=uuid.uuid4())
     db_session.add(task)
     db_session.commit()
     db_session.refresh(task)
@@ -24,7 +24,7 @@ def task_in_db(db_session: sqlmodel.Session) -> Task:
 def cancelled_task_in_db(db_session: sqlmodel.Session) -> Task:
     cancelled_status = db_session.exec(select(TaskStatus).where(TaskStatus.code == "cancelled")).one()
     task = Task(
-        url="https://www.instagram.com/reel/middleware_cancelled_shortcode/",
+        short_code="middleware_cancelled_shortcode",
         status_code=cancelled_status.id,
         cancelled=True,
         user_id=uuid.uuid4(),
