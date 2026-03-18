@@ -63,7 +63,8 @@ export ENCRYPTION_KEY=<generated-key>
 export JWT_SECRET_KEY=<your-secret>     # optional, has a default
 
 # Start all services
-docker compose up --build
+docker compose build
+docker compose up -d
 ```
 
 API is available at `http://localhost:8000`.
