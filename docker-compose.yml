@@ -52,7 +52,7 @@ services:
         condition: service_healthy
     volumes:
       - media_data:/data/reels
-    command: ["uv", "run", "fastapi", "run", "app/main.py", "--host", "0.0.0.0", "--port", "8000"]
+    command: ["fastapi", "run", "app/main.py", "--host", "0.0.0.0", "--port", "8000"]
     networks:
       - instagram-reel-downloader
 
@@ -69,7 +69,7 @@ services:
         condition: service_started
     volumes:
       - media_data:/data/reels
-    command: ["uv", "run", "taskiq", "worker", "app.broker:broker"]
+    command: ["taskiq", "worker", "app.broker:broker"]
     networks:
       - instagram-reel-downloader
 
