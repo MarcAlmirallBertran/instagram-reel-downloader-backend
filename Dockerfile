@@ -15,6 +15,8 @@ RUN uv sync --no-dev --compile-bytecode --locked
 
 FROM python:3.11-slim
 
+ENV PYTHONUNBUFFERED=1
+
 # System dependencies: ffmpeg required by pydub for audio extraction
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
