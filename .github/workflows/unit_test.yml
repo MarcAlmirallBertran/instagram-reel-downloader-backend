@@ -8,11 +8,11 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Install the latest version of uv
-        uses: astral-sh/setup-uv@v8.0.0
-
-      - name: Install the project
-        run: uv sync --locked --all-extras --dev
+      - name: Setup Python environment
+        uses: .github/actions/setup-python-env
+        with:
+          install-dev: "true"
+          extras: "--all-extras"
 
       - name: Run tests
         run: uv run pytest test
