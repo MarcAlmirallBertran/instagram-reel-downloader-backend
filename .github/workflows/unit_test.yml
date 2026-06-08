@@ -1,4 +1,4 @@
-name: workflow.yml
+name: Unit test
 on: [push]
 
 jobs:
