@@ -41,6 +41,7 @@ services:
 
   api:
     build: .
+    image: instagram-reel-downloader-backend:latest
     ports:
       - "8000:8000"
     environment:
@@ -57,7 +58,7 @@ services:
       - instagram-reel-downloader
 
   worker:
-    build: .
+    image: instagram-reel-downloader-backend:latest
     environment:
       <<: *common-env
     depends_on:
