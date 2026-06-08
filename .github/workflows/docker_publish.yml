@@ -1,4 +1,4 @@
-name: docker_publish.yml
+name: Docker Publish
 on:
   push:
     branches: [ $default-branch ]
